@@ -35,7 +35,7 @@ WARNING: This is a work in progress so architectural changes may happen in the f
 
 ## Documentation 📝
 
-If you'd like to learn more about the CRC , how it works and how you can use it for your project,
+If you'd like to learn more about the CRC , how it works and how you can use it for your project,[official website](http://crytpoclassic.org/).
 
 
 ---
