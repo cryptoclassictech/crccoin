@@ -5,7 +5,7 @@
 
 CRC  is a modular and extensible framework for building Ethereum-compatible blockchain networks.
 
-To find out more about Polygon, visit the [official website](https://polygon.technology/).
+To find out more about CRC, visit the [official website](http://crytpoclassic.org/).
 
 WARNING: This is a work in progress so architectural changes may happen in the future. The code has not been audited yet, so please contact [CRC team](mailto:cryptoclassictech@gmail.com) if you would like to use it in production.
 
