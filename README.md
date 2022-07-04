@@ -1,6 +1,26 @@
 
 ![Banner](.github/banner.jpg)
-[![codecov](https://codecov.io/gh/0xPolygon/polygon-edge/branch/develop/graph/badge.svg?token=PXEADRC1IW)](https://codecov.io/gh/0xPolygon/polygon-edge)
+## Installation
+
+Install Go Lang Version 1.18 or Higher - https://go.dev/doc/install
+
+Clone the Repository
+
+git clone https://github.com/cryptoclassictech/crccoin.git
+
+cd crccoin
+go build  -o crcd
+
+
+
+#Initialize the Data 
+./crcd secrets init --data-dir ~/.crc
+
+#Run the Node
+./crcd  server --data-dir  ~/.crc  --chain genesis.json  --libp2p 0.0.0.0:1478 --nat <Your IP> --seal
+
+
+
 ## CRC
 
 CRC  is a modular and extensible framework for building Ethereum-compatible blockchain networks.
