@@ -29,13 +29,13 @@ go build  -o crcd
 
 CRC  is a modular and extensible framework for building Ethereum-compatible blockchain networks.
 
-To find out more about CRC, visit the [official website](http://crytpoclassic.org/).
+To find out more about CRC, visit the [official website](http://cryptoclassic.org/).
 
 WARNING: This is a work in progress so architectural changes may happen in the future. The code has not been audited yet, so please contact [CRC team](mailto:cryptoclassictech@gmail.com) if you would like to use it in production.
 
 ## Documentation 📝
 
-If you'd like to learn more about the CRC , how it works and how you can use it for your project,[official website](http://crytpoclassic.org/).
+If you'd like to learn more about the CRC , how it works and how you can use it for your project,[official website](http://cryptoclassic.org/).
 
 
 ---
