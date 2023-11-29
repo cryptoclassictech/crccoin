@@ -2,8 +2,23 @@
 ![Banner](.github/banner.jpg)
 ## Installation
 
+# Go Lang Installation
 Install Go Lang Version 1.19.13 
 
+Download Go Lang from Following URL - 
+
+https://go.dev/dl/go1.19.13.linux-amd64.tar.gz
+
+Unzip the Go Lang tar file using following command
+
+sudo tar -C /usr/local -xzf go1.19.13.linux-amd64.tar.gz
+
+Execute below export commnad to make go lang accessible from any where
+
+export PATH=$PATH:/usr/local/go/bin
+
+
+#Cloning Repository
 Clone the Repository
 
 git clone https://github.com/cryptoclassictech/crccoin.git 
