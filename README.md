@@ -30,11 +30,11 @@ Clone the Repository
 
 ## Initialize the Data 
 
-./crcd secrets init --data-dir ~/.crc
+		./crcd secrets init --data-dir ~/.crc
 
 ## Run the Node
 
-./crcd  server --data-dir  ~/.crc  --chain genesis.json  --libp2p 0.0.0.0:1478 --nat "Your IP" --seal
+		./crcd  server --data-dir  ~/.crc  --chain genesis.json  --libp2p 0.0.0.0:1478 --nat "Your IP" --seal
 
 
 
