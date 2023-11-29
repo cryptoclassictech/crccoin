@@ -7,26 +7,26 @@ Install Go Lang Version 1.19.13
 
 Download Go Lang from Following URL - 
 
-https://go.dev/dl/go1.19.13.linux-amd64.tar.gz
+		https://go.dev/dl/go1.19.13.linux-amd64.tar.gz
 
 Unzip the Go Lang tar file using following command
 
-sudo tar -C /usr/local -xzf go1.19.13.linux-amd64.tar.gz
+		sudo tar -C /usr/local -xzf go1.19.13.linux-amd64.tar.gz
 
 Execute below export commnad to make go lang accessible from any where
 
-export PATH=$PATH:/usr/local/go/bin
+		export PATH=$PATH:/usr/local/go/bin
 
 
 #Cloning Repository
 Clone the Repository
 
-git clone https://github.com/cryptoclassictech/crccoin.git 
+		git clone https://github.com/cryptoclassictech/crccoin.git 
 
-cd crccoin
+		cd crccoin
 
 
-go build  -o crcd
+		go build  -o crcd
 
 
 
@@ -62,6 +62,7 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
        http://www.apache.org/licenses/LICENSE-2.0
+	   
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
