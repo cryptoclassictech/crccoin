@@ -1,11 +1,9 @@
 
 ![Banner](.github/banner.jpg)
-## Installation
+# Installation
 
-# Go Lang Installation
-Install Go Lang Version 1.19.13 
-
-Download Go Lang from Following URL - 
+## Go Lang Installation
+Install Go Lang Version 1.19.13.Download Go Lang from Following URL - 
 
 		https://go.dev/dl/go1.19.13.linux-amd64.tar.gz
 
@@ -18,7 +16,7 @@ Execute below export commnad to make go lang accessible from any where
 		export PATH=$PATH:/usr/local/go/bin
 
 
-#Cloning Repository
+## Cloning Repository
 Clone the Repository
 
 		git clone https://github.com/cryptoclassictech/crccoin.git 
@@ -30,11 +28,11 @@ Clone the Repository
 
 
 
-#Initialize the Data 
+## Initialize the Data 
 
 ./crcd secrets init --data-dir ~/.crc
 
-#Run the Node
+## Run the Node
 
 ./crcd  server --data-dir  ~/.crc  --chain genesis.json  --libp2p 0.0.0.0:1478 --nat "Your IP" --seal
 
