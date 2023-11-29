@@ -2,7 +2,10 @@ package ibftswitch
 
 import (
 	"fmt"
+
 	"github.com/0xPolygon/polygon-edge/command"
+	"github.com/0xPolygon/polygon-edge/command/helper"
+	"github.com/0xPolygon/polygon-edge/validators"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +18,7 @@ func GetCommand() *cobra.Command {
 	}
 
 	setFlags(ibftSwitchCmd)
-	setRequiredFlags(ibftSwitchCmd)
+	helper.SetRequiredFlags(ibftSwitchCmd, params.getRequiredFlags())
 
 	return ibftSwitchCmd
 }
@@ -25,10 +28,7 @@ func setFlags(cmd *cobra.Command) {
 		&params.genesisPath,
 		chainFlag,
 		fmt.Sprintf("./%s", command.DefaultGenesisFileName),
-		fmt.Sprintf(
-			"the genesis file to update. Default: ./%s",
-			command.DefaultGenesisFileName,
-		),
+		"the genesis file to update",
 	)
 
 	cmd.Flags().StringVar(
@@ -38,36 +38,67 @@ func setFlags(cmd *cobra.Command) {
 		"the new IBFT type [PoA, PoS]",
 	)
 
+	{
+		// switch block height
+		cmd.Flags().StringVar(
+			&params.deploymentRaw,
+			deploymentFlag,
+			"",
+			"the height to deploy the contract in PoS",
+		)
+
+		cmd.Flags().StringVar(
+			&params.fromRaw,
+			fromFlag,
+			"",
+			"the height to switch the new type",
+		)
+	}
+
+	// Validator Configurations
 	cmd.Flags().StringVar(
-		&params.deploymentRaw,
-		deploymentFlag,
-		"",
-		"the height to deploy the contract in PoS",
+		&params.rawIBFTValidatorType,
+		command.IBFTValidatorTypeFlag,
+		string(validators.BLSValidatorType),
+		"the type of validators in IBFT",
 	)
 
-	cmd.Flags().StringVar(
-		&params.fromRaw,
-		fromFlag,
-		"",
-		"the height to switch the new type",
-	)
-	cmd.Flags().StringVar(
-		&params.minValidatorCountRaw,
-		minValidatorCount,
-		"",
-		"the minimum number of validators in the validator set for PoS",
-	)
-	cmd.Flags().StringVar(
-		&params.maxValidatorCountRaw,
-		maxValidatorCount,
-		"",
-		"the maximum number of validators in the validator set for PoS",
-	)
-}
+	{
+		// PoA Configuration
+		cmd.Flags().StringVar(
+			&params.ibftValidatorPrefixPath,
+			command.IBFTValidatorPrefixFlag,
+			"",
+			"prefix path for validator folder directory. "+
+				"Needs to be present if ibft-validator is omitted",
+		)
 
-func setRequiredFlags(cmd *cobra.Command) {
-	for _, requiredFlag := range params.getRequiredFlags() {
-		_ = cmd.MarkFlagRequired(requiredFlag)
+		cmd.Flags().StringArrayVar(
+			&params.ibftValidatorsRaw,
+			command.IBFTValidatorFlag,
+			[]string{},
+			"addresses to be used as IBFT validators, can be used multiple times. "+
+				"Needs to be present if ibft-validators-prefix-path is omitted",
+		)
+
+		cmd.MarkFlagsMutuallyExclusive(command.IBFTValidatorPrefixFlag, command.IBFTValidatorFlag)
+	}
+
+	{
+		// PoS Configuration
+		cmd.Flags().StringVar(
+			&params.minValidatorCountRaw,
+			minValidatorCount,
+			"",
+			"the minimum number of validators in the validator set for PoS",
+		)
+
+		cmd.Flags().StringVar(
+			&params.maxValidatorCountRaw,
+			maxValidatorCount,
+			"",
+			"the maximum number of validators in the validator set for PoS",
+		)
 	}
 }
 

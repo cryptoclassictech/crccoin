@@ -1,5 +1,5 @@
 peers.json
-
+genesis.json
 secretsManagerConfig.json
 *-packr.go
 config*.json
@@ -21,3 +21,8 @@ main
 
 # exclude build folder
 artifacts
+
+# Log files
+*.log
+
+vendor/

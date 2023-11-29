@@ -2,6 +2,7 @@ package status
 
 import (
 	"context"
+
 	"github.com/0xPolygon/polygon-edge/command"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/spf13/cobra"
@@ -13,7 +14,7 @@ import (
 func GetCommand() *cobra.Command {
 	statusCmd := &cobra.Command{
 		Use:   "status",
-		Short: "Returns the status of the CRC client",
+		Short: "Returns the status of the Polygon Edge client",
 		Args:  cobra.NoArgs,
 		Run:   runCommand,
 	}

@@ -5,11 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/0xPolygon/polygon-edge/blockchain"
 	"github.com/0xPolygon/polygon-edge/network/common"
 	"github.com/0xPolygon/polygon-edge/server/proto"
 	"github.com/0xPolygon/polygon-edge/types"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/peer"
 	empty "google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -222,7 +223,10 @@ func (s *systemService) Export(req *proto.ExportRequest, stream proto.System_Exp
 }
 
 const (
-	defaultMaxGRPCPayloadSize uint64 = 4 * 1024 * 1024 // 4MB
+	defaultMaxGRPCPayloadSize uint64 = 512 * 1024 // 4MB
+
+	// Number of header fields * bytes per field (From, To, Latest all them uint64)
+	maxHeaderInfoSize int = 3 * 8
 )
 
 type blockStreamWriter struct {
@@ -249,8 +253,7 @@ func newBlockStreamWriter(
 
 func (w *blockStreamWriter) appendBlock(b *types.Block) error {
 	data := b.MarshalRLP()
-
-	if uint64(w.buf.Len()+len(data)) >= w.maxPayload {
+	if uint64(maxHeaderInfoSize+w.buf.Len()+len(data)) >= w.maxPayload {
 		// send buffered data to client first
 		if err := w.flush(); err != nil {
 			return err

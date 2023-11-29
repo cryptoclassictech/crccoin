@@ -4,8 +4,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
+	"os"
 
 	"github.com/0xPolygon/polygon-edge/helper/hex"
 	"github.com/0xPolygon/polygon-edge/types"
@@ -68,7 +68,7 @@ func (g *Genesis) GenesisHeader() *types.Header {
 		GasUsed:      g.GasUsed,
 		Difficulty:   g.Difficulty,
 		MixHash:      g.Mixhash,
-		Miner:        g.Coinbase,
+		Miner:        g.Coinbase.Bytes(),
 		StateRoot:    stateRoot,
 		Sha3Uncles:   types.EmptyUncleHash,
 		ReceiptsRoot: types.EmptyRootHash,
@@ -335,27 +335,12 @@ func (g *GenesisAccount) UnmarshalJSON(data []byte) error {
 }
 
 func Import(chain string) (*Chain, error) {
-	c, err := ImportFromName(chain)
-	if err == nil {
-		return c, nil
-	}
-
 	return ImportFromFile(chain)
-}
-
-// ImportFromName imports a chain from the precompiled json chains (i.e. foundation)
-func ImportFromName(chain string) (*Chain, error) {
-	data, err := Asset("chain/chains/" + chain + ".json")
-	if err != nil {
-		return nil, err
-	}
-
-	return importChain(data)
 }
 
 // ImportFromFile imports a chain from a filepath
 func ImportFromFile(filename string) (*Chain, error) {
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}

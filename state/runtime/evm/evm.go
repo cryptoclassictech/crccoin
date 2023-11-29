@@ -2,6 +2,7 @@ package evm
 
 import (
 	"errors"
+
 	"github.com/0xPolygon/polygon-edge/chain"
 	"github.com/0xPolygon/polygon-edge/state/runtime"
 )
@@ -58,6 +59,7 @@ func (e *EVM) Run(c *runtime.Contract, host runtime.Host, config *chain.ForksInT
 	return &runtime.ExecutionResult{
 		ReturnValue: returnValue,
 		GasLeft:     gasLeft,
+		GasUsed:     c.Gas - gasLeft,
 		Err:         err,
 	}
 }

@@ -1,23 +1,20 @@
 package init
 
 import (
-	"crypto/ecdsa"
 	"errors"
+
 	"github.com/0xPolygon/polygon-edge/command"
-	"github.com/0xPolygon/polygon-edge/crypto"
 	"github.com/0xPolygon/polygon-edge/secrets"
 	"github.com/0xPolygon/polygon-edge/secrets/helper"
-	libp2pCrypto "github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/peer"
 )
 
 const (
 	dataDirFlag = "data-dir"
 	configFlag  = "config"
-)
-
-var (
-	params = &initParams{}
+	ecdsaFlag   = "ecdsa"
+	blsFlag     = "bls"
+	networkFlag = "network"
+	numFlag     = "num"
 )
 
 var (
@@ -27,16 +24,14 @@ var (
 )
 
 type initParams struct {
-	dataDir    string
-	configPath string
+	dataDir          string
+	configPath       string
+	generatesECDSA   bool
+	generatesBLS     bool
+	generatesNetwork bool
 
 	secretsManager secrets.SecretsManager
 	secretsConfig  *secrets.SecretsManagerConfig
-
-	validatorPrivateKey  *ecdsa.PrivateKey
-	networkingPrivateKey libp2pCrypto.PrivKey
-
-	nodeID peer.ID
 }
 
 func (ip *initParams) validateFlags() error {
@@ -60,8 +55,15 @@ func (ip *initParams) initSecrets() error {
 }
 
 func (ip *initParams) initSecretsManager() error {
+	var err error
 	if ip.hasConfigPath() {
-		return ip.initFromConfig()
+		if err = ip.parseConfig(); err != nil {
+			return err
+		}
+
+		ip.secretsManager, err = helper.InitCloudSecretsManager(ip.secretsConfig)
+
+		return err
 	}
 
 	return ip.initLocalSecretsManager()
@@ -69,44 +71,6 @@ func (ip *initParams) initSecretsManager() error {
 
 func (ip *initParams) hasConfigPath() bool {
 	return ip.configPath != ""
-}
-
-func (ip *initParams) initFromConfig() error {
-	if err := ip.parseConfig(); err != nil {
-		return err
-	}
-
-	var secretsManager secrets.SecretsManager
-
-	switch ip.secretsConfig.Type {
-	case secrets.HashicorpVault:
-		vault, err := helper.SetupHashicorpVault(ip.secretsConfig)
-		if err != nil {
-			return err
-		}
-
-		secretsManager = vault
-	case secrets.AWSSSM:
-		AWSSSM, err := helper.SetupAWSSSM(ip.secretsConfig)
-		if err != nil {
-			return err
-		}
-
-		secretsManager = AWSSSM
-	case secrets.GCPSSM:
-		GCPSSM, err := helper.SetupGCPSSM(ip.secretsConfig)
-		if err != nil {
-			return err
-		}
-
-		secretsManager = GCPSSM
-	default:
-		return errUnsupportedType
-	}
-
-	ip.secretsManager = secretsManager
-
-	return nil
 }
 
 func (ip *initParams) parseConfig() error {
@@ -136,41 +100,51 @@ func (ip *initParams) initLocalSecretsManager() error {
 }
 
 func (ip *initParams) initValidatorKey() error {
-	validatorKey, err := helper.InitValidatorKey(ip.secretsManager)
-	if err != nil {
-		return err
+	var err error
+
+	if ip.generatesECDSA {
+		if _, err = helper.InitECDSAValidatorKey(ip.secretsManager); err != nil {
+			return err
+		}
 	}
 
-	ip.validatorPrivateKey = validatorKey
+	if ip.generatesBLS {
+		if _, err = helper.InitBLSValidatorKey(ip.secretsManager); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
 
 func (ip *initParams) initNetworkingKey() error {
-	networkingKey, err := helper.InitNetworkingPrivateKey(ip.secretsManager)
-	if err != nil {
-		return err
+	if ip.generatesNetwork {
+		if _, err := helper.InitNetworkingPrivateKey(ip.secretsManager); err != nil {
+			return err
+		}
 	}
-
-	ip.networkingPrivateKey = networkingKey
-
-	return ip.initNodeID()
-}
-
-func (ip *initParams) initNodeID() error {
-	nodeID, err := peer.IDFromPrivateKey(ip.networkingPrivateKey)
-	if err != nil {
-		return err
-	}
-
-	ip.nodeID = nodeID
 
 	return nil
 }
 
-func (ip *initParams) getResult() command.CommandResult {
-	return &SecretsInitResult{
-		Address: crypto.PubKeyToAddress(&ip.validatorPrivateKey.PublicKey),
-		NodeID:  ip.nodeID.String(),
+// getResult gets keys from secret manager and return result to display
+func (ip *initParams) getResult() (command.CommandResult, error) {
+	var (
+		res = &SecretsInitResult{}
+		err error
+	)
+
+	if res.Address, err = helper.LoadValidatorAddress(ip.secretsManager); err != nil {
+		return nil, err
 	}
+
+	if res.BLSPubkey, err = helper.LoadBLSPublicKey(ip.secretsManager); err != nil {
+		return nil, err
+	}
+
+	if res.NodeID, err = helper.LoadNodeID(ip.secretsManager); err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }

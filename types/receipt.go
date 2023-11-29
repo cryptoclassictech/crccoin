@@ -1,10 +1,6 @@
 package types
 
 import (
-	"database/sql/driver"
-	"errors"
-	"fmt"
-
 	goHex "encoding/hex"
 
 	"github.com/0xPolygon/polygon-edge/helper/hex"
@@ -53,7 +49,7 @@ const BloomByteLength = 256
 type Bloom [BloomByteLength]byte
 
 func (b *Bloom) UnmarshalText(input []byte) error {
-	input = input[2:]
+	input = hex.DropHexPrefix(input)
 	if _, err := goHex.Decode(b[:], input); err != nil {
 		return err
 	}
@@ -63,26 +59,6 @@ func (b *Bloom) UnmarshalText(input []byte) error {
 
 func (b Bloom) String() string {
 	return hex.EncodeToHex(b[:])
-}
-
-func (b Bloom) Value() (driver.Value, error) {
-	return b.String(), nil
-}
-
-func (b *Bloom) Scan(src interface{}) error {
-	stringVal, ok := src.([]byte)
-	if !ok {
-		return errors.New("invalid type assert")
-	}
-
-	bb, decodeErr := hex.DecodeHex(string(stringVal))
-	if decodeErr != nil {
-		return fmt.Errorf("unable to decode value, %w", decodeErr)
-	}
-
-	copy(b[:], bb[:])
-
-	return nil
 }
 
 // MarshalText implements encoding.TextMarshaler
@@ -111,7 +87,6 @@ func CreateBloom(receipts []*Receipt) (b Bloom) {
 
 func (b *Bloom) setEncode(hasher *keccak.Keccak, h []byte) {
 	hasher.Reset()
-	//nolint
 	hasher.Write(h[:])
 	buf := hasher.Read()
 
@@ -153,7 +128,6 @@ func (b *Bloom) IsLogInBloom(log *Log) bool {
 // isByteArrPresent checks if the byte array is possibly present in the Bloom filter
 func (b *Bloom) isByteArrPresent(hasher *keccak.Keccak, data []byte) bool {
 	hasher.Reset()
-	//nolint
 	hasher.Write(data[:])
 	buf := hasher.Read()
 

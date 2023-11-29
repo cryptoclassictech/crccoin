@@ -2,11 +2,11 @@
 ![Banner](.github/banner.jpg)
 ## Installation
 
-Install Go Lang Version 1.18 or Higher - https://go.dev/doc/install
+Install Go Lang Version 1.19.13 
 
 Clone the Repository
 
-git clone https://github.com/cryptoclassictech/crccoin.git
+git clone https://github.com/cryptoclassictech/crccoin.git 
 
 cd crccoin
 

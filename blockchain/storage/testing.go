@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"fmt"
 	"math/big"
 	"reflect"
 	"testing"
@@ -416,11 +415,6 @@ func testWriteCanonicalHeader(t *testing.T, m PlaceholderStorage) {
 	assert.NoError(t, err)
 
 	if !reflect.DeepEqual(h, hh) {
-		fmt.Println("-- valid --")
-		fmt.Println(h)
-		fmt.Println("-- found --")
-		fmt.Println(hh)
-
 		t.Fatal("bad header")
 	}
 
@@ -493,8 +487,6 @@ type MockStorage struct {
 	writeCanonicalHeaderFn writeCanonicalHeaderDelegate
 	writeBodyFn            writeBodyDelegate
 	readBodyFn             readBodyDelegate
-	writeSnapshotFn        writeSnapshotDelegate
-	readSnapshotFn         readSnapshotDelegate
 	writeReceiptsFn        writeReceiptsDelegate
 	readReceiptsFn         readReceiptsDelegate
 	writeTxLookupFn        writeTxLookupDelegate
@@ -684,30 +676,6 @@ func (m *MockStorage) ReadBody(hash types.Hash) (*types.Body, error) {
 
 func (m *MockStorage) HookReadBody(fn readBodyDelegate) {
 	m.readBodyFn = fn
-}
-
-func (m *MockStorage) WriteSnapshot(hash types.Hash, blob []byte) error {
-	if m.writeSnapshotFn != nil {
-		return m.writeSnapshotFn(hash, blob)
-	}
-
-	return nil
-}
-
-func (m *MockStorage) HookWriteSnapshot(fn writeSnapshotDelegate) {
-	m.writeSnapshotFn = fn
-}
-
-func (m *MockStorage) ReadSnapshot(hash types.Hash) ([]byte, bool) {
-	if m.readSnapshotFn != nil {
-		return m.readSnapshotFn(hash)
-	}
-
-	return []byte{}, true
-}
-
-func (m *MockStorage) HookReadSnapshot(fn readSnapshotDelegate) {
-	m.readSnapshotFn = fn
 }
 
 func (m *MockStorage) WriteReceipts(hash types.Hash, receipts []*types.Receipt) error {

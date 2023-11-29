@@ -3,7 +3,6 @@ package tests
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -138,8 +137,10 @@ func stringToInt64T(t *testing.T, str string) int64 {
 func (e *env) ToHeader(t *testing.T) *types.Header {
 	t.Helper()
 
+	miner := stringToAddressT(t, e.Coinbase)
+
 	return &types.Header{
-		Miner:      stringToAddressT(t, e.Coinbase),
+		Miner:      miner[:],
 		Difficulty: stringToUint64T(t, e.Difficulty),
 		GasLimit:   stringToUint64T(t, e.GasLimit),
 		Number:     stringToUint64T(t, e.Number),
@@ -227,7 +228,7 @@ func buildState(
 	s := itrie.NewState(itrie.NewMemoryStorage())
 	snap := s.NewSnapshot()
 
-	txn := state.NewTxn(s, snap)
+	txn := state.NewTxn(snap)
 
 	for addr, alloc := range allocs {
 		txn.CreateAccount(addr)
@@ -243,7 +244,8 @@ func buildState(
 		}
 	}
 
-	snap, root := txn.Commit(false)
+	objs := txn.Commit(false)
+	snap, root := snap.Commit(objs)
 
 	return s, snap, types.BytesToHash(root)
 }
@@ -380,7 +382,7 @@ func (t *stTransaction) UnmarshalJSON(input []byte) error {
 			return err
 		}
 
-		key, err := crypto.ParsePrivateKey(secretKey)
+		key, err := crypto.ParseECDSAPrivateKey(secretKey)
 		if err != nil {
 			return fmt.Errorf("invalid private key: %w", err)
 		}
@@ -486,7 +488,7 @@ func listFolders(paths ...string) ([]string, error) {
 	for _, p := range paths {
 		path := filepath.Join(TESTS, p)
 
-		files, err := ioutil.ReadDir(path)
+		files, err := os.ReadDir(path)
 		if err != nil {
 			return nil, err
 		}

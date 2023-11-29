@@ -21,10 +21,10 @@ type Config struct {
 	GRPCAddr   *net.TCPAddr
 	LibP2PAddr *net.TCPAddr
 
-	PriceLimit      uint64
-	MaxSlots        uint64
-	BlockTime       uint64
-	IBFTBaseTimeout uint64
+	PriceLimit         uint64
+	MaxAccountEnqueued uint64
+	MaxSlots           uint64
+	BlockTime          uint64
 
 	Telemetry *Telemetry
 	Network   *network.Config
@@ -38,6 +38,8 @@ type Config struct {
 
 	LogLevel hclog.Level
 
+	JSONLogFormat bool
+
 	LogFilePath string
 }
 
@@ -50,4 +52,6 @@ type Telemetry struct {
 type JSONRPC struct {
 	JSONRPCAddr              *net.TCPAddr
 	AccessControlAllowOrigin []string
+	BatchLengthLimit         uint64
+	BlockRangeLimit          uint64
 }

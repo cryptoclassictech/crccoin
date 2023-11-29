@@ -4,9 +4,8 @@ import (
 	"errors"
 	"net"
 
-	"github.com/0xPolygon/polygon-edge/command/server/config"
-
 	"github.com/0xPolygon/polygon-edge/chain"
+	"github.com/0xPolygon/polygon-edge/command/server/config"
 	"github.com/0xPolygon/polygon-edge/network"
 	"github.com/0xPolygon/polygon-edge/secrets"
 	"github.com/0xPolygon/polygon-edge/server"
@@ -15,28 +14,36 @@ import (
 )
 
 const (
-	configFlag            = "config"
-	genesisPathFlag       = "chain"
-	dataDirFlag           = "data-dir"
-	libp2pAddressFlag     = "libp2p"
-	prometheusAddressFlag = "prometheus"
-	natFlag               = "nat"
-	dnsFlag               = "dns"
-	sealFlag              = "seal"
-	maxPeersFlag          = "max-peers"
-	maxInboundPeersFlag   = "max-inbound-peers"
-	maxOutboundPeersFlag  = "max-outbound-peers"
-	priceLimitFlag        = "price-limit"
-	maxSlotsFlag          = "max-slots"
-	blockGasTargetFlag    = "block-gas-target"
-	secretsConfigFlag     = "secrets-config"
-	restoreFlag           = "restore"
-	blockTimeFlag         = "block-time"
-	ibftBaseTimeoutFlag   = "ibft-base-timeout"
-	devIntervalFlag       = "dev-interval"
-	devFlag               = "dev"
-	corsOriginFlag        = "access-control-allow-origins"
-	logFileLocationFlag   = "log-to"
+	configFlag                   = "config"
+	genesisPathFlag              = "chain"
+	dataDirFlag                  = "data-dir"
+	libp2pAddressFlag            = "libp2p"
+	prometheusAddressFlag        = "prometheus"
+	natFlag                      = "nat"
+	dnsFlag                      = "dns"
+	sealFlag                     = "seal"
+	maxPeersFlag                 = "max-peers"
+	maxInboundPeersFlag          = "max-inbound-peers"
+	maxOutboundPeersFlag         = "max-outbound-peers"
+	priceLimitFlag               = "price-limit"
+	jsonRPCBatchRequestLimitFlag = "json-rpc-batch-request-limit"
+	jsonRPCBlockRangeLimitFlag   = "json-rpc-block-range-limit"
+	maxSlotsFlag                 = "max-slots"
+	maxEnqueuedFlag              = "max-enqueued"
+	blockGasTargetFlag           = "block-gas-target"
+	secretsConfigFlag            = "secrets-config"
+	restoreFlag                  = "restore"
+	blockTimeFlag                = "block-time"
+	devIntervalFlag              = "dev-interval"
+	devFlag                      = "dev"
+	corsOriginFlag               = "access-control-allow-origins"
+	logFileLocationFlag          = "log-to"
+)
+
+// Flags that are deprecated, but need to be preserved for
+// backwards compatibility with existing scripts
+const (
+	ibftBaseTimeoutFlagLEGACY = "ibft-base-timeout"
 )
 
 const (
@@ -54,7 +61,6 @@ var (
 )
 
 var (
-	errInvalidPeerParams = errors.New("both max-peers and max-inbound/outbound flags are set")
 	errInvalidNATAddress = errors.New("could not parse NAT IP address")
 )
 
@@ -75,19 +81,12 @@ type serverParams struct {
 
 	corsAllowedOrigins []string
 
+	ibftBaseTimeoutLegacy uint64
+
 	genesisConfig *chain.Chain
 	secretsConfig *secrets.SecretsManagerConfig
 
 	logFileLocation string
-}
-
-func (p *serverParams) validateFlags() error {
-	// Validate the max peers configuration
-	if p.isMaxPeersSet() && p.isPeerRangeSet() {
-		return errInvalidPeerParams
-	}
-
-	return nil
 }
 
 func (p *serverParams) isMaxPeersSet() bool {
@@ -139,12 +138,18 @@ func (p *serverParams) setRawJSONRPCAddress(jsonRPCAddress string) {
 	p.rawConfig.JSONRPCAddr = jsonRPCAddress
 }
 
+func (p *serverParams) setJSONLogFormat(jsonLogFormat bool) {
+	p.rawConfig.JSONLogFormat = jsonLogFormat
+}
+
 func (p *serverParams) generateConfig() *server.Config {
 	return &server.Config{
 		Chain: p.genesisConfig,
 		JSONRPC: &server.JSONRPC{
 			JSONRPCAddr:              p.jsonRPCAddress,
 			AccessControlAllowOrigin: p.corsAllowedOrigins,
+			BatchLengthLimit:         p.rawConfig.JSONRPCBatchRequestLimit,
+			BlockRangeLimit:          p.rawConfig.JSONRPCBlockRangeLimit,
 		},
 		GRPCAddr:   p.grpcAddress,
 		LibP2PAddr: p.libp2pAddress,
@@ -162,15 +167,16 @@ func (p *serverParams) generateConfig() *server.Config {
 			MaxOutboundPeers: p.rawConfig.Network.MaxOutboundPeers,
 			Chain:            p.genesisConfig,
 		},
-		DataDir:         p.rawConfig.DataDir,
-		Seal:            p.rawConfig.ShouldSeal,
-		PriceLimit:      p.rawConfig.TxPool.PriceLimit,
-		MaxSlots:        p.rawConfig.TxPool.MaxSlots,
-		SecretsManager:  p.secretsConfig,
-		RestoreFile:     p.getRestoreFilePath(),
-		BlockTime:       p.rawConfig.BlockTime,
-		IBFTBaseTimeout: p.rawConfig.IBFTBaseTimeout,
-		LogLevel:        hclog.LevelFromString(p.rawConfig.LogLevel),
-		LogFilePath:     p.logFileLocation,
+		DataDir:            p.rawConfig.DataDir,
+		Seal:               p.rawConfig.ShouldSeal,
+		PriceLimit:         p.rawConfig.TxPool.PriceLimit,
+		MaxSlots:           p.rawConfig.TxPool.MaxSlots,
+		MaxAccountEnqueued: p.rawConfig.TxPool.MaxAccountEnqueued,
+		SecretsManager:     p.secretsConfig,
+		RestoreFile:        p.getRestoreFilePath(),
+		BlockTime:          p.rawConfig.BlockTime,
+		LogLevel:           hclog.LevelFromString(p.rawConfig.LogLevel),
+		JSONLogFormat:      p.rawConfig.JSONLogFormat,
+		LogFilePath:        p.logFileLocation,
 	}
 }

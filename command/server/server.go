@@ -4,18 +4,17 @@ import (
 	"fmt"
 
 	"github.com/0xPolygon/polygon-edge/command"
+	"github.com/0xPolygon/polygon-edge/command/helper"
 	"github.com/0xPolygon/polygon-edge/command/server/config"
 	"github.com/0xPolygon/polygon-edge/command/server/export"
-	"github.com/spf13/cobra"
-
-	"github.com/0xPolygon/polygon-edge/command/helper"
 	"github.com/0xPolygon/polygon-edge/server"
+	"github.com/spf13/cobra"
 )
 
 func GetCommand() *cobra.Command {
 	serverCmd := &cobra.Command{
 		Use:     "server",
-		Short:   "The default command that starts the CRC client, by bootstrapping all modules together",
+		Short:   "The default command that starts the Polygon Edge client, by bootstrapping all modules together",
 		PreRunE: runPreRun,
 		Run:     runCommand,
 	}
@@ -65,7 +64,7 @@ func setFlags(cmd *cobra.Command) {
 		&params.rawConfig.DataDir,
 		dataDirFlag,
 		defaultConfig.DataDir,
-		"the data directory used for storing CRC client data",
+		"the data directory used for storing Polygon Edge client data",
 	)
 
 	cmd.Flags().StringVar(
@@ -130,7 +129,7 @@ func setFlags(cmd *cobra.Command) {
 		&params.rawConfig.Network.NoDiscover,
 		command.NoDiscoverFlag,
 		defaultConfig.Network.NoDiscover,
-		"prevent the client from discovering other peers (default: false)",
+		"prevent the client from discovering other peers",
 	)
 
 	cmd.Flags().Int64Var(
@@ -150,6 +149,7 @@ func setFlags(cmd *cobra.Command) {
 	)
 	// override default usage value
 	cmd.Flag(maxInboundPeersFlag).DefValue = fmt.Sprintf("%d", defaultConfig.Network.MaxInboundPeers)
+	cmd.MarkFlagsMutuallyExclusive(maxPeersFlag, maxInboundPeersFlag)
 
 	cmd.Flags().Int64Var(
 		&params.rawConfig.Network.MaxOutboundPeers,
@@ -159,6 +159,7 @@ func setFlags(cmd *cobra.Command) {
 	)
 	// override default usage value
 	cmd.Flag(maxOutboundPeersFlag).DefValue = fmt.Sprintf("%d", defaultConfig.Network.MaxOutboundPeers)
+	cmd.MarkFlagsMutuallyExclusive(maxPeersFlag, maxOutboundPeersFlag)
 
 	cmd.Flags().Uint64Var(
 		&params.rawConfig.TxPool.PriceLimit,
@@ -178,21 +179,17 @@ func setFlags(cmd *cobra.Command) {
 	)
 
 	cmd.Flags().Uint64Var(
+		&params.rawConfig.TxPool.MaxAccountEnqueued,
+		maxEnqueuedFlag,
+		defaultConfig.TxPool.MaxAccountEnqueued,
+		"maximum number of enqueued transactions per account",
+	)
+
+	cmd.Flags().Uint64Var(
 		&params.rawConfig.BlockTime,
 		blockTimeFlag,
 		defaultConfig.BlockTime,
 		"minimum block time in seconds (at least 1s)",
-	)
-
-	cmd.Flags().Uint64Var(
-		&params.rawConfig.IBFTBaseTimeout,
-		ibftBaseTimeoutFlag,
-		// Calculate from block time if it is not given
-		0,
-		fmt.Sprintf(
-			"base IBFT timeout in seconds, it needs to be larger than block time. (block time * %d) is set if it's zero",
-			config.BlockTimeMultiplierForTimeout,
-		),
 	)
 
 	cmd.Flags().StringArrayVar(
@@ -202,6 +199,21 @@ func setFlags(cmd *cobra.Command) {
 		"the CORS header indicating whether any JSON-RPC response can be shared with the specified origin",
 	)
 
+	cmd.Flags().Uint64Var(
+		&params.rawConfig.JSONRPCBatchRequestLimit,
+		jsonRPCBatchRequestLimitFlag,
+		defaultConfig.JSONRPCBatchRequestLimit,
+		"max length to be considered when handling json-rpc batch requests, value of 0 disables it",
+	)
+
+	cmd.Flags().Uint64Var(
+		&params.rawConfig.JSONRPCBlockRangeLimit,
+		jsonRPCBlockRangeLimitFlag,
+		defaultConfig.JSONRPCBlockRangeLimit,
+		"max block range to be considered when executing json-rpc requests "+
+			"that consider fromBlock/toBlock values (e.g. eth_getLogs), value of 0 disables it",
+	)
+
 	cmd.Flags().StringVar(
 		&params.rawConfig.LogFilePath,
 		logFileLocationFlag,
@@ -209,7 +221,23 @@ func setFlags(cmd *cobra.Command) {
 		"write all logs to the file at specified location instead of writing them to console",
 	)
 
+	setLegacyFlags(cmd)
+
 	setDevFlags(cmd)
+}
+
+// setLegacyFlags sets the legacy flags to preserve backwards compatibility
+// with running partners
+func setLegacyFlags(cmd *cobra.Command) {
+	// Legacy IBFT base timeout flag
+	cmd.Flags().Uint64Var(
+		&params.ibftBaseTimeoutLegacy,
+		ibftBaseTimeoutFlagLEGACY,
+		0,
+		"",
+	)
+
+	_ = cmd.Flags().MarkHidden(ibftBaseTimeoutFlagLEGACY)
 }
 
 func setDevFlags(cmd *cobra.Command) {
@@ -237,6 +265,7 @@ func runPreRun(cmd *cobra.Command, _ []string) error {
 	// The config file will have precedence over --flag
 	params.setRawGRPCAddress(helper.GetGRPCAddress(cmd))
 	params.setRawJSONRPCAddress(helper.GetJSONRPCAddress(cmd))
+	params.setJSONLogFormat(helper.GetJSONLogFormat(cmd))
 
 	// Check if the config file has been specified
 	// Config file settings will override JSON-RPC and GRPC address values
@@ -244,10 +273,6 @@ func runPreRun(cmd *cobra.Command, _ []string) error {
 		if err := params.initConfigFromFile(); err != nil {
 			return err
 		}
-	}
-
-	if err := params.validateFlags(); err != nil {
-		return err
 	}
 
 	if err := params.initRawParams(); err != nil {

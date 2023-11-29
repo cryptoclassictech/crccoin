@@ -1,9 +1,7 @@
 package types
 
 import (
-	"database/sql/driver"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"sync/atomic"
 
@@ -12,22 +10,22 @@ import (
 
 // Header represents a block header in the Ethereum blockchain.
 type Header struct {
-	ParentHash   Hash    `json:"parentHash"`
-	Sha3Uncles   Hash    `json:"sha3Uncles"`
-	Miner        Address `json:"miner"`
-	StateRoot    Hash    `json:"stateRoot"`
-	TxRoot       Hash    `json:"transactionsRoot"`
-	ReceiptsRoot Hash    `json:"receiptsRoot"`
-	LogsBloom    Bloom   `json:"logsBloom"`
-	Difficulty   uint64  `json:"difficulty"`
-	Number       uint64  `json:"number"`
-	GasLimit     uint64  `json:"gasLimit"`
-	GasUsed      uint64  `json:"gasUsed"`
-	Timestamp    uint64  `json:"timestamp"`
-	ExtraData    []byte  `json:"extraData"`
-	MixHash      Hash    `json:"mixHash"`
-	Nonce        Nonce   `json:"nonce"`
-	Hash         Hash    `json:"hash"`
+	ParentHash   Hash
+	Sha3Uncles   Hash
+	Miner        []byte
+	StateRoot    Hash
+	TxRoot       Hash
+	ReceiptsRoot Hash
+	LogsBloom    Bloom
+	Difficulty   uint64
+	Number       uint64
+	GasLimit     uint64
+	GasUsed      uint64
+	Timestamp    uint64
+	ExtraData    []byte
+	MixHash      Hash
+	Nonce        Nonce
+	Hash         Hash
 }
 
 func (h *Header) Equal(hh *Header) bool {
@@ -46,30 +44,14 @@ func (h *Header) SetNonce(i uint64) {
 	binary.BigEndian.PutUint64(h.Nonce[:], i)
 }
 
+func (h *Header) IsGenesis() bool {
+	return h.Hash != ZeroHash && h.Number == 0
+}
+
 type Nonce [8]byte
 
 func (n Nonce) String() string {
 	return hex.EncodeToHex(n[:])
-}
-
-func (n Nonce) Value() (driver.Value, error) {
-	return n.String(), nil
-}
-
-func (n *Nonce) Scan(src interface{}) error {
-	stringVal, ok := src.([]byte)
-	if !ok {
-		return errors.New("invalid type assert")
-	}
-
-	nn, decodeErr := hex.DecodeHex(string(stringVal))
-	if decodeErr != nil {
-		return fmt.Errorf("unable to decode value, %w", decodeErr)
-	}
-
-	copy(n[:], nn[:])
-
-	return nil
 }
 
 // MarshalText implements encoding.TextMarshaler
@@ -78,13 +60,30 @@ func (n Nonce) MarshalText() ([]byte, error) {
 }
 
 func (h *Header) Copy() *Header {
-	hh := new(Header)
-	*hh = *h
+	newHeader := &Header{
+		ParentHash:   h.ParentHash,
+		Sha3Uncles:   h.Sha3Uncles,
+		StateRoot:    h.StateRoot,
+		TxRoot:       h.TxRoot,
+		ReceiptsRoot: h.ReceiptsRoot,
+		MixHash:      h.MixHash,
+		Hash:         h.Hash,
+		LogsBloom:    h.LogsBloom,
+		Nonce:        h.Nonce,
+		Difficulty:   h.Difficulty,
+		Number:       h.Number,
+		GasLimit:     h.GasLimit,
+		GasUsed:      h.GasUsed,
+		Timestamp:    h.Timestamp,
+	}
 
-	hh.ExtraData = make([]byte, len(h.ExtraData))
-	copy(hh.ExtraData[:], h.ExtraData[:])
+	newHeader.Miner = make([]byte, len(h.Miner))
+	copy(newHeader.Miner[:], h.Miner[:])
 
-	return hh
+	newHeader.ExtraData = make([]byte, len(h.ExtraData))
+	copy(newHeader.ExtraData[:], h.ExtraData[:])
+
+	return newHeader
 }
 
 type Body struct {

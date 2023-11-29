@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"net"
 	"os"
@@ -13,8 +12,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/umbracle/ethgo"
 
 	"github.com/0xPolygon/polygon-edge/contracts/abis"
 	"github.com/0xPolygon/polygon-edge/contracts/staking"
@@ -25,13 +22,14 @@ import (
 	txpoolProto "github.com/0xPolygon/polygon-edge/txpool/proto"
 	"github.com/0xPolygon/polygon-edge/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/umbracle/ethgo"
 	"github.com/umbracle/ethgo/jsonrpc"
 	"golang.org/x/crypto/sha3"
 	empty "google.golang.org/protobuf/types/known/emptypb"
 )
 
 var (
-	DefaultTimeout = time.Second * 10
+	DefaultTimeout = time.Minute
 )
 
 type AtomicErrors struct {
@@ -382,7 +380,7 @@ func MethodSigWithParams(nameWithParams string) []byte {
 
 // tempDir returns directory path in tmp with random directory name
 func tempDir() (string, error) {
-	return ioutil.TempDir("/tmp", "polygon-edge-e2e-")
+	return os.MkdirTemp("/tmp", "polygon-edge-e2e-")
 }
 
 func ToLocalIPv4LibP2pAddr(port int, nodeID string) string {
@@ -462,6 +460,11 @@ func NewTestServers(t *testing.T, num int, conf func(*TestServerConfig)) []*Test
 		}
 	})
 
+	logsDir, err := initLogsDir(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// It is safe to use a dummy MultiAddr here, since this init method
 	// is called for the Dev consensus mode, and IBFT servers are initialized with NewIBFTServersManager.
 	// This method needs to be standardized in the future
@@ -473,7 +476,11 @@ func NewTestServers(t *testing.T, num int, conf func(*TestServerConfig)) []*Test
 			t.Fatal(err)
 		}
 
-		srv := NewTestServer(t, dataDir, conf)
+		srv := NewTestServer(t, dataDir, func(c *TestServerConfig) {
+			c.SetLogsDir(logsDir)
+			c.SetSaveLogs(true)
+			conf(c)
+		})
 		srv.Config.SetBootnodes(bootnodes)
 
 		srvs = append(srvs, srv)

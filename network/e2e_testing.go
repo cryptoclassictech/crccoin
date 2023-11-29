@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sync"
 	"testing"
@@ -16,8 +15,8 @@ import (
 	"github.com/0xPolygon/polygon-edge/secrets"
 	"github.com/0xPolygon/polygon-edge/secrets/local"
 	"github.com/hashicorp/go-hclog"
-	"github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/assert"
 )
@@ -48,10 +47,73 @@ func JoinAndWait(
 
 	connectCtx, cancelFn := context.WithTimeout(context.Background(), connectTimeout)
 	defer cancelFn()
+
 	// Wait for the peer to be connected
 	_, connectErr := WaitUntilPeerConnectsTo(connectCtx, source, destination.AddrInfo().ID)
 
 	return connectErr
+}
+
+// JoinAndWait is a helper method to make multiple servers connect to corresponding peer
+func JoinAndWaitMultiple(
+	timeout time.Duration,
+	servers ...*Server,
+) error {
+	if len(servers)%2 != 0 {
+		return errors.New("number of servers must be even")
+	}
+
+	numPair := len(servers) / 2
+
+	var (
+		wg    sync.WaitGroup
+		errCh = make(chan error, numPair)
+	)
+
+	for i := 0; i < len(servers)-1; i += 2 {
+		s1, s2 := servers[i], servers[i+1]
+
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			errCh <- JoinAndWait(s1, s2, timeout, timeout)
+		}()
+	}
+
+	wg.Wait()
+
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func DisconnectAndWait(
+	source *Server,
+	target peer.ID,
+	leaveTimeout time.Duration,
+) error {
+	if leaveTimeout == 0 {
+		leaveTimeout = DefaultLeaveTimeout
+	}
+
+	// Mark the destination address as ready for dialing
+	source.DisconnectFromPeer(target, "test")
+
+	disconnectCtx, cancelFn := context.WithTimeout(context.Background(), leaveTimeout)
+	defer cancelFn()
+
+	// Wait for the peer to be disconnected
+	_, err := WaitUntilPeerDisconnectsFrom(disconnectCtx, source, target)
+
+	return err
 }
 
 func WaitUntilPeerConnectsTo(ctx context.Context, srv *Server, ids ...peer.ID) (bool, error) {
@@ -239,7 +301,6 @@ func CreateServer(params *CreateServerParams) (*Server, error) {
 	}
 
 	cfg.SecretsManager = secretsManager
-	cfg.Metrics = NilMetrics()
 
 	server, err := NewServer(params.Logger, cfg)
 	if err != nil {
@@ -308,7 +369,7 @@ func MeshJoin(servers ...*Server) []error {
 func GenerateTestLibp2pKey(t *testing.T) (crypto.PrivKey, string) {
 	t.Helper()
 
-	dir, err := ioutil.TempDir(os.TempDir(), "")
+	dir, err := os.MkdirTemp(os.TempDir(), "")
 	assert.NoError(t, err)
 
 	// Instantiate the correct folder structure

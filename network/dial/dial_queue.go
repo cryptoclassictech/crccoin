@@ -2,10 +2,11 @@ package dial
 
 import (
 	"container/heap"
-	"github.com/0xPolygon/polygon-edge/network/common"
 	"sync"
 
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/0xPolygon/polygon-edge/network/common"
+
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 // DialQueue is a queue that holds dials tasks for potential peers, implemented as a min-heap

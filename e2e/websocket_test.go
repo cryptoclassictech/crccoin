@@ -3,13 +3,14 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"math/big"
+	"testing"
+
 	"github.com/0xPolygon/polygon-edge/e2e/framework"
 	"github.com/0xPolygon/polygon-edge/jsonrpc"
 	"github.com/0xPolygon/polygon-edge/types"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
-	"math/big"
-	"testing"
 )
 
 type testWSRequest struct {
@@ -58,7 +59,6 @@ func TestWS_Response(t *testing.T) {
 
 	srvs := framework.NewTestServers(t, 1, func(config *framework.TestServerConfig) {
 		config.SetConsensus(framework.ConsensusDev)
-		config.SetSeal(true)
 
 		for _, account := range preminedAccounts {
 			config.Premine(account.address, account.balance)

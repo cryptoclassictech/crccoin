@@ -45,6 +45,9 @@ builds:
     ldflags:
       # We need to build a static binary because we are building in a glibc based system and running in a musl container
       -s -w -linkmode external -extldflags "-static" -X 'github.com/0xPolygon/polygon-edge/versioning.Version=v{{ .Version }}'
+    tags:
+      - netgo
+      - osusergo
 
   - id: linux-arm64
     main: ./main.go
@@ -59,17 +62,20 @@ builds:
     ldflags:
       # We need to build a static binary because we are building in a glibc based system and running in a musl container
       -s -w -linkmode external -extldflags "-static" -X 'github.com/0xPolygon/polygon-edge/versioning.Version=v{{ .Version }}'
+    tags:
+      - netgo
+      - osusergo
 
 archives:
   -
     files:
-    - LICENSE
-    - README.md
+      - LICENSE
+      - README.md
 
 #nfpms:
 #  - vendor: 0xPolygon
 #    homepage: https://polygon.technology
-#    maintainer: CRC Team <cryptoclassictech@gmail.com>
+#    maintainer: Polygon Edge Team <edge@polygon.technology>
 #    description:  A Framework for Building Ethereum-compatible Blockchain Networks
 #    license: GPLv3 LGPLv3
 #
@@ -125,4 +131,4 @@ docker_manifests:
     image_templates:
       - 0xpolygon/{{ .ProjectName }}:{{ .Version }}-amd64
       - 0xpolygon/{{ .ProjectName }}:{{ .Version }}-arm64
-    skip_push: false
+    skip_push: auto

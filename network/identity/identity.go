@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/0xPolygon/polygon-edge/network/event"
-	"github.com/hashicorp/go-hclog"
 	"sync"
 
+	"github.com/0xPolygon/polygon-edge/network/event"
+	"github.com/hashicorp/go-hclog"
+
 	"github.com/0xPolygon/polygon-edge/network/proto"
-	"github.com/libp2p/go-libp2p-core/network"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 const PeerID = "peerID"
@@ -102,25 +103,22 @@ func (i *IdentityService) GetNotifyBundle() *network.NotifyBundle {
 			i.addPendingStatus(peerID, conn.Stat().Direction)
 
 			go func() {
-				connectEvent := &event.PeerEvent{
-					PeerID: peerID,
-					Type:   event.PeerDialCompleted,
-				}
+				eventType := event.PeerDialCompleted
 
 				if err := i.handleConnected(peerID, conn.Stat().Direction); err != nil {
 					// Close the connection to the peer
 					i.disconnectFromPeer(peerID, err.Error())
 
-					connectEvent.Type = event.PeerFailedToConnect
+					eventType = event.PeerFailedToConnect
 				}
 
 				// Mark the peer as no longer pending
-				i.removePendingStatus(connectEvent.PeerID)
+				i.removePendingStatus(peerID)
 
 				// Emit an adequate event
 				i.baseServer.EmitEvent(&event.PeerEvent{
-					PeerID: connectEvent.PeerID,
-					Type:   connectEvent.Type,
+					PeerID: peerID,
+					Type:   eventType,
 				})
 			}()
 		},

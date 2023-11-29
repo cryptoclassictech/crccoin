@@ -1,12 +1,15 @@
 package jsonrpc
 
 import (
+	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
+	"github.com/0xPolygon/polygon-edge/versioning"
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/go-hclog"
 )
@@ -32,7 +35,7 @@ func (s serverType) String() string {
 	}
 }
 
-// JSONRPC is an API backend
+// JSONRPC is an API consensus
 type JSONRPC struct {
 	logger     hclog.Logger
 	config     *Config
@@ -40,6 +43,7 @@ type JSONRPC struct {
 }
 
 type dispatcher interface {
+	RemoveFilterByWs(conn wsConn)
 	HandleWs(reqBody []byte, conn wsConn) ([]byte, error)
 	Handle(reqBody []byte) ([]byte, error)
 }
@@ -51,22 +55,36 @@ type JSONRPCStore interface {
 	networkStore
 	txPoolStore
 	filterManagerStore
+	debugStore
 }
 
 type Config struct {
 	Store                    JSONRPCStore
 	Addr                     *net.TCPAddr
 	ChainID                  uint64
+	ChainName                string
 	AccessControlAllowOrigin []string
 	PriceLimit               uint64
+	BatchLengthLimit         uint64
+	BlockRangeLimit          uint64
 }
 
 // NewJSONRPC returns the JSONRPC http server
 func NewJSONRPC(logger hclog.Logger, config *Config) (*JSONRPC, error) {
 	srv := &JSONRPC{
-		logger:     logger.Named("jsonrpc"),
-		config:     config,
-		dispatcher: newDispatcher(logger, config.Store, config.ChainID, config.PriceLimit),
+		logger: logger.Named("jsonrpc"),
+		config: config,
+		dispatcher: newDispatcher(
+			logger,
+			config.Store,
+			&dispatcherParams{
+				chainID:                 config.ChainID,
+				chainName:               config.ChainName,
+				priceLimit:              config.PriceLimit,
+				jsonRPCBatchLengthLimit: config.BatchLengthLimit,
+				blockRangeLimit:         config.BlockRangeLimit,
+			},
+		),
 	}
 
 	// start http server
@@ -85,7 +103,10 @@ func (j *JSONRPC) setupHTTP() error {
 		return err
 	}
 
-	mux := http.DefaultServeMux
+	// NewServeMux must be used, as it disables all debug features.
+	// For some strange reason, with DefaultServeMux debug/vars is always enabled (but not debug/pprof).
+	// If pprof need to be enabled, this should be DefaultServeMux
+	mux := http.NewServeMux()
 
 	// The middleware factory returns a handler, so we need to wrap the handler function properly.
 	jsonRPCHandler := http.HandlerFunc(j.handle)
@@ -94,7 +115,8 @@ func (j *JSONRPC) setupHTTP() error {
 	mux.HandleFunc("/ws", j.handleWs)
 
 	srv := http.Server{
-		Handler: mux,
+		Handler:           mux,
+		ReadHeaderTimeout: 60 * time.Second,
 	}
 
 	go func() {
@@ -142,15 +164,25 @@ var wsUpgrader = websocket.Upgrader{
 
 // wsWrapper is a wrapping object for the web socket connection and logger
 type wsWrapper struct {
-	ws        *websocket.Conn // the actual WS connection
-	logger    hclog.Logger    // module logger
-	writeLock sync.Mutex      // writer lock
+	sync.Mutex
+
+	ws       *websocket.Conn // the actual WS connection
+	logger   hclog.Logger    // module logger
+	filterID string          // filter ID
+}
+
+func (w *wsWrapper) SetFilterID(filterID string) {
+	w.filterID = filterID
+}
+
+func (w *wsWrapper) GetFilterID() string {
+	return w.filterID
 }
 
 // WriteMessage writes out the message to the WS peer
 func (w *wsWrapper) WriteMessage(messageType int, data []byte) error {
-	w.writeLock.Lock()
-	defer w.writeLock.Unlock()
+	w.Lock()
+	defer w.Unlock()
 	writeErr := w.ws.WriteMessage(messageType, data)
 
 	if writeErr != nil {
@@ -210,6 +242,8 @@ func (j *JSONRPC) handleWs(w http.ResponseWriter, req *http.Request) {
 				j.logger.Info("Closing WS connection with error")
 			}
 
+			j.dispatcher.RemoveFilterByWs(wrapConn)
+
 			break
 		}
 
@@ -239,24 +273,20 @@ func (j *JSONRPC) handle(w http.ResponseWriter, req *http.Request) {
 		"Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization",
 	)
 
-	if (*req).Method == "OPTIONS" {
-		return
-	}
-
-	if req.Method == "GET" {
-		_, _ = w.Write([]byte("CRC Coin JSON-RPC"))
-
-		return
-	}
-
-	if req.Method != "POST" {
+	switch req.Method {
+	case "POST":
+		j.handleJSONRPCRequest(w, req)
+	case "GET":
+		j.handleGetRequest(w)
+	case "OPTIONS":
+		// nothing to return
+	default:
 		_, _ = w.Write([]byte("method " + req.Method + " not allowed"))
-
-		return
 	}
+}
 
-	data, err := ioutil.ReadAll(req.Body)
-
+func (j *JSONRPC) handleJSONRPCRequest(w http.ResponseWriter, req *http.Request) {
+	data, err := io.ReadAll(req.Body)
 	if err != nil {
 		_, _ = w.Write([]byte(err.Error()))
 
@@ -275,4 +305,27 @@ func (j *JSONRPC) handle(w http.ResponseWriter, req *http.Request) {
 	}
 
 	j.logger.Debug("handle", "response", string(resp))
+}
+
+type GetResponse struct {
+	Name    string `json:"name"`
+	ChainID uint64 `json:"chain_id"`
+	Version string `json:"version"`
+}
+
+func (j *JSONRPC) handleGetRequest(writer io.Writer) {
+	data := &GetResponse{
+		Name:    j.config.ChainName,
+		ChainID: j.config.ChainID,
+		Version: versioning.Version,
+	}
+
+	resp, err := json.Marshal(data)
+	if err != nil {
+		_, _ = writer.Write([]byte(err.Error()))
+	}
+
+	if _, err = writer.Write(resp); err != nil {
+		_, _ = writer.Write([]byte(err.Error()))
+	}
 }

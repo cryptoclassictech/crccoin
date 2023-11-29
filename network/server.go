@@ -4,26 +4,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/0xPolygon/polygon-edge/network/common"
 	"github.com/0xPolygon/polygon-edge/network/dial"
 	"github.com/0xPolygon/polygon-edge/network/discovery"
+	"github.com/armon/go-metrics"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	rawGrpc "google.golang.org/grpc"
-	"sync"
-	"sync/atomic"
-	"time"
 
 	peerEvent "github.com/0xPolygon/polygon-edge/network/event"
 	"github.com/0xPolygon/polygon-edge/secrets"
 	"github.com/hashicorp/go-hclog"
-	"github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/event"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/network"
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/protocol"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/event"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -37,6 +38,9 @@ const (
 	// we should have enough capacity of the queue
 	// because when queue is full, validation is throttled and new messages are dropped.
 	validateBufferSize = 1024
+
+	// networkMetrics is a prefix used for network-related metrics
+	networkMetrics = "network"
 )
 
 const (
@@ -45,8 +49,8 @@ const (
 
 	DefaultLibp2pPort int = 1478
 
-	MinimumPeerConnections int64 = 1
 	MinimumBootNodes       int   = 1
+	MinimumPeerConnections int64 = 1
 )
 
 var (
@@ -65,8 +69,6 @@ type Server struct {
 
 	peers     map[peer.ID]*PeerConnInfo // map of all peer connections
 	peersLock sync.Mutex                // lock for the peer map
-
-	metrics *Metrics // reference for metrics tracking
 
 	dialQueue *dial.DialQueue // queue used to asynchronously connect to peers
 
@@ -138,7 +140,6 @@ func NewServer(logger hclog.Logger, config *Config) (*Server, error) {
 		host:             host,
 		addrs:            host.Addrs(),
 		peers:            make(map[peer.ID]*PeerConnInfo),
-		metrics:          config.Metrics,
 		dialQueue:        dial.NewDialQueue(),
 		closeCh:          make(chan struct{}),
 		emitterPeerEvent: emitter,
@@ -261,7 +262,7 @@ func (s *Server) Start() error {
 	}
 
 	go s.runDial()
-	go s.checkPeerConnections()
+	go s.keepAliveMinimumPeerConnections()
 
 	// watch for disconnected peers
 	s.host.Network().Notify(&network.NotifyBundle{
@@ -317,8 +318,9 @@ func (s *Server) setupBootnodes() error {
 	return nil
 }
 
-// checkPeerCount will attempt to make new connections if the active peer count is lesser than the specified limit.
-func (s *Server) checkPeerConnections() {
+// keepAliveMinimumPeerConnections will attempt to make new connections
+// if the active peer count is lesser than the specified limit.
+func (s *Server) keepAliveMinimumPeerConnections() {
 	for {
 		select {
 		case <-time.After(10 * time.Second):
@@ -328,10 +330,16 @@ func (s *Server) checkPeerConnections() {
 
 		if s.numPeers() < MinimumPeerConnections {
 			if s.config.NoDiscover || !s.bootnodes.hasBootnodes() {
-				//TODO: dial peers from the peerstore
+				// dial unconnected peer
+				randPeer := s.GetRandomPeer()
+				if randPeer != nil && !s.IsConnected(*randPeer) {
+					s.addToDialQueue(s.GetPeerInfo(*randPeer), common.PriorityRandomDial)
+				}
 			} else {
-				randomNode := s.GetRandomBootnode()
-				s.addToDialQueue(randomNode, common.PriorityRandomDial)
+				// dial random unconnected bootnode
+				if randomNode := s.GetRandomBootnode(); randomNode != nil {
+					s.addToDialQueue(randomNode, common.PriorityRandomDial)
+				}
 			}
 		}
 	}
@@ -345,22 +353,29 @@ func (s *Server) runDial() {
 	// having events go missing, as they're crucial to the functioning
 	// of the runDial mechanism
 	notifyCh := make(chan struct{}, 1)
-	defer close(notifyCh)
 
-	if err := s.SubscribeFn(func(event *peerEvent.PeerEvent) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// cancel context first
+	defer close(notifyCh)
+	defer cancel()
+
+	if err := s.SubscribeFn(ctx, func(event *peerEvent.PeerEvent) {
 		// Only concerned about the listed event types
 		switch event.Type {
 		case
 			peerEvent.PeerConnected,
 			peerEvent.PeerFailedToConnect,
 			peerEvent.PeerDisconnected,
-			peerEvent.PeerDialCompleted, // @Yoshiki, not sure we need to monitor this event type here
+			peerEvent.PeerDialCompleted,
 			peerEvent.PeerAddedToDialQueue:
 		default:
 			return
 		}
 
 		select {
+		case <-ctx.Done():
+			return
 		case notifyCh <- struct{}{}:
 		default:
 		}
@@ -392,11 +407,11 @@ func (s *Server) runDial() {
 
 			s.logger.Debug(fmt.Sprintf("Dialing peer [%s] as local [%s]", peerInfo.String(), s.host.ID()))
 
-			if !s.isConnected(peerInfo.ID) {
+			if !s.IsConnected(peerInfo.ID) {
 				// the connection process is async because it involves connection (here) +
 				// the handshake done in the identity service.
 				if err := s.host.Connect(context.Background(), *peerInfo); err != nil {
-					s.logger.Debug("failed to dial", "addr", peerInfo.String(), "err", err)
+					s.logger.Debug("failed to dial", "addr", peerInfo.String(), "err", err.Error())
 
 					s.emitEvent(peerInfo.ID, peerEvent.PeerFailedToConnect)
 				}
@@ -445,8 +460,8 @@ func (s *Server) hasPeer(peerID peer.ID) bool {
 	return ok
 }
 
-// isConnected checks if the networking server is connected to a peer
-func (s *Server) isConnected(peerID peer.ID) bool {
+// IsConnected checks if the networking server is connected to a peer
+func (s *Server) IsConnected(peerID peer.ID) bool {
 	return s.host.Network().Connectedness(peerID) == network.Connected
 }
 
@@ -502,9 +517,7 @@ func (s *Server) removePeerInfo(peerID peer.ID) *PeerConnInfo {
 		}
 	}
 
-	s.metrics.TotalPeerCount.Set(
-		float64(len(s.peers)),
-	)
+	metrics.SetGauge([]string{networkMetrics, "peers"}, float32(len(s.peers)))
 
 	return connectionInfo
 }
@@ -535,7 +548,7 @@ func (s *Server) DisconnectFromPeer(peer peer.ID, reason string) {
 
 var (
 	// Anything below 35s is prone to false timeouts, as seen from empirical test data
-	DefaultJoinTimeout   = 40 * time.Second
+	DefaultJoinTimeout   = 100 * time.Second
 	DefaultBufferTimeout = DefaultJoinTimeout + time.Second*5
 )
 
@@ -583,9 +596,9 @@ func (s *Server) Close() error {
 	return err
 }
 
-// newProtoConnection opens up a new stream on the set protocol to the peer,
+// NewProtoConnection opens up a new stream on the set protocol to the peer,
 // and returns a reference to the connection
-func (s *Server) newProtoConnection(protocol string, peerID peer.ID) (*rawGrpc.ClientConn, error) {
+func (s *Server) NewProtoConnection(protocol string, peerID peer.ID) (*rawGrpc.ClientConn, error) {
 	s.protocolsLock.Lock()
 	defer s.protocolsLock.Unlock()
 
@@ -696,22 +709,25 @@ func (s *Server) Subscribe() (*Subscription, error) {
 }
 
 // SubscribeFn is a helper method to run subscription of PeerEvents
-func (s *Server) SubscribeFn(handler func(evnt *peerEvent.PeerEvent)) error {
+func (s *Server) SubscribeFn(ctx context.Context, handler func(evnt *peerEvent.PeerEvent)) error {
 	sub, err := s.Subscribe()
 	if err != nil {
 		return err
 	}
 
 	go func() {
+		defer sub.Close()
+
 		for {
 			select {
-			case evnt := <-sub.GetCh():
-				handler(evnt)
+			case <-ctx.Done():
+				return
 
 			case <-s.closeCh:
-				sub.Close()
-
 				return
+
+			case evnt := <-sub.GetCh():
+				handler(evnt)
 			}
 		}
 	}()
@@ -720,27 +736,33 @@ func (s *Server) SubscribeFn(handler func(evnt *peerEvent.PeerEvent)) error {
 }
 
 // SubscribeCh returns an event of of subscription events
-func (s *Server) SubscribeCh() (<-chan *peerEvent.PeerEvent, error) {
+func (s *Server) SubscribeCh(ctx context.Context) (<-chan *peerEvent.PeerEvent, error) {
 	ch := make(chan *peerEvent.PeerEvent)
+	ctx, cancel := context.WithCancel(ctx)
 
-	var isClosed int32 = 0
-
-	err := s.SubscribeFn(func(evnt *peerEvent.PeerEvent) {
-		if atomic.LoadInt32(&isClosed) == 0 {
-			ch <- evnt
+	err := s.SubscribeFn(ctx, func(evnt *peerEvent.PeerEvent) {
+		select {
+		case <-ctx.Done():
+			return
+		case ch <- evnt:
 		}
 	})
-	if err != nil {
-		atomic.StoreInt32(&isClosed, 1)
+
+	cleanup := func() {
+		cancel()
 		close(ch)
+	}
+
+	if err != nil {
+		cleanup()
 
 		return nil, err
 	}
 
 	go func() {
 		<-s.closeCh
-		atomic.StoreInt32(&isClosed, 1)
-		close(ch)
+
+		cleanup()
 	}()
 
 	return ch, nil
@@ -750,13 +772,12 @@ func (s *Server) SubscribeCh() (<-chan *peerEvent.PeerEvent, error) {
 func (s *Server) updateConnCountMetrics(direction network.Direction) {
 	switch direction {
 	case network.DirInbound:
-		s.metrics.InboundConnectionsCount.Set(
-			float64(s.connectionCounts.GetInboundConnCount()),
-		)
+		metrics.SetGauge([]string{networkMetrics, "inbound_connections_count"},
+			float32(s.connectionCounts.GetInboundConnCount()))
+
 	case network.DirOutbound:
-		s.metrics.OutboundConnectionsCount.Set(
-			float64(s.connectionCounts.GetOutboundConnCount()),
-		)
+		metrics.SetGauge([]string{networkMetrics, "outbound_connections_count"},
+			float32(s.connectionCounts.GetOutboundConnCount()))
 	}
 }
 
@@ -764,12 +785,11 @@ func (s *Server) updateConnCountMetrics(direction network.Direction) {
 func (s *Server) updatePendingConnCountMetrics(direction network.Direction) {
 	switch direction {
 	case network.DirInbound:
-		s.metrics.PendingInboundConnectionsCount.Set(
-			float64(s.connectionCounts.GetPendingInboundConnCount()),
-		)
+		metrics.SetGauge([]string{networkMetrics, "pending_inbound_connections_count"},
+			float32(s.connectionCounts.GetPendingInboundConnCount()))
+
 	case network.DirOutbound:
-		s.metrics.PendingOutboundConnectionsCount.Set(
-			float64(s.connectionCounts.GetPendingOutboundConnCount()),
-		)
+		metrics.SetGauge([]string{networkMetrics, "pending_outbound_connections_count"},
+			float32(s.connectionCounts.GetPendingOutboundConnCount()))
 	}
 }

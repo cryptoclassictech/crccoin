@@ -2,17 +2,18 @@ package txpool
 
 import (
 	"context"
-	"crypto/rand"
-	"github.com/0xPolygon/polygon-edge/helper/tests"
-	"github.com/0xPolygon/polygon-edge/txpool/proto"
-	"github.com/0xPolygon/polygon-edge/types"
-	"github.com/stretchr/testify/assert"
+	cryptoRand "crypto/rand"
 	"math/big"
 	mathRand "math/rand"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/0xPolygon/polygon-edge/helper/tests"
+	"github.com/0xPolygon/polygon-edge/txpool/proto"
+	"github.com/0xPolygon/polygon-edge/types"
+	"github.com/stretchr/testify/assert"
 )
 
 func shuffleTxPoolEvents(
@@ -41,7 +42,7 @@ func shuffleTxPoolEvents(
 
 	randomEventType := func(supported bool) proto.EventType {
 		for {
-			randNum, _ := rand.Int(rand.Reader, big.NewInt(int64(len(supportedTypes))))
+			randNum, _ := cryptoRand.Int(cryptoRand.Reader, big.NewInt(int64(len(supportedTypes))))
 
 			randType := allEvents[randNum.Int64()]
 			if tempSubscription.eventSupported(randType) == supported {

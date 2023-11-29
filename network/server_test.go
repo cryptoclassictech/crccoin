@@ -3,18 +3,19 @@ package network
 import (
 	"context"
 	"fmt"
-	"github.com/0xPolygon/polygon-edge/network/common"
-	peerEvent "github.com/0xPolygon/polygon-edge/network/event"
 	"net"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/0xPolygon/polygon-edge/network/common"
+	peerEvent "github.com/0xPolygon/polygon-edge/network/event"
+
 	"github.com/0xPolygon/polygon-edge/helper/tests"
 
-	"github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/network"
-	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/assert"
 )
@@ -681,6 +682,135 @@ func TestRunDial(t *testing.T) {
 		}
 
 		closeServers(srv, peers[1])
+	})
+}
+
+func TestSubscribeFn(t *testing.T) {
+	t.Parallel()
+
+	setupServer := func(t *testing.T, shouldCloseAfterTest bool) *Server {
+		t.Helper()
+
+		srv, err := CreateServer(
+			&CreateServerParams{
+				ConfigCallback: func(c *Config) {
+					c.MaxInboundPeers = 0
+					c.MaxOutboundPeers = 0
+					c.NoDiscover = true
+				},
+			},
+		)
+
+		if err != nil {
+			t.Fatalf("Unable to create server, %v", err)
+		}
+
+		if shouldCloseAfterTest {
+			t.Cleanup(func() {
+				srv.Close()
+			})
+		}
+
+		return srv
+	}
+
+	toChannel := func(t *testing.T, ctx context.Context, server *Server) <-chan *peerEvent.PeerEvent {
+		t.Helper()
+
+		eventCh := make(chan *peerEvent.PeerEvent)
+
+		t.Cleanup(func() {
+			close(eventCh)
+		})
+
+		err := server.SubscribeFn(ctx, func(e *peerEvent.PeerEvent) {
+			eventCh <- e
+		})
+
+		assert.NoError(t, err)
+
+		return eventCh
+	}
+
+	waitForEvent := func(
+		t *testing.T,
+		eventCh <-chan *peerEvent.PeerEvent,
+		timeout time.Duration,
+	) (*peerEvent.PeerEvent, bool) {
+		t.Helper()
+
+		select {
+		case received := <-eventCh:
+			return received, true
+		case <-time.After(timeout):
+			return nil, false
+		}
+	}
+
+	event := &peerEvent.PeerEvent{
+		PeerID: peer.ID("test"),
+		Type:   peerEvent.PeerConnected,
+	}
+
+	t.Run("should call callback", func(t *testing.T) {
+		t.Parallel()
+
+		server := setupServer(t, true)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(func() {
+			cancel()
+		})
+
+		eventCh := toChannel(t, ctx, server)
+
+		server.EmitEvent(event)
+
+		res, received := waitForEvent(t, eventCh, time.Second*5)
+
+		assert.True(t, received)
+		assert.Equal(t, event, res)
+	})
+
+	t.Run("should not call callback after context is closed", func(t *testing.T) {
+		t.Parallel()
+
+		server := setupServer(t, true)
+
+		ctx, cancel := context.WithCancel(context.Background())
+
+		eventCh := toChannel(t, ctx, server)
+
+		// cancel before emitting
+		cancel()
+
+		server.EmitEvent(event)
+
+		_, received := waitForEvent(t, eventCh, time.Second*5)
+
+		assert.False(t, received)
+	})
+
+	t.Run("should not call callback after server closed", func(t *testing.T) {
+		t.Parallel()
+
+		server := setupServer(t, false)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(func() {
+			cancel()
+		})
+
+		eventCh := toChannel(t, ctx, server)
+
+		// close server before emitting event
+		server.Close()
+
+		server.EmitEvent(event)
+
+		_, received := waitForEvent(t, eventCh, time.Second*5)
+
+		assert.False(t, received)
 	})
 }
 

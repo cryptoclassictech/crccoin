@@ -3,17 +3,18 @@ package discovery
 import (
 	"context"
 	"errors"
+	"testing"
+	"time"
+
 	"github.com/0xPolygon/polygon-edge/helper/tests"
 	"github.com/0xPolygon/polygon-edge/network/common"
 	"github.com/0xPolygon/polygon-edge/network/proto"
 	networkTesting "github.com/0xPolygon/polygon-edge/network/testing"
 	"github.com/hashicorp/go-hclog"
-	"github.com/libp2p/go-libp2p-core/peer"
 	kb "github.com/libp2p/go-libp2p-kbucket"
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
-	"testing"
-	"time"
 )
 
 // newDiscoveryService creates a new discovery service instance
